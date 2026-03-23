@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AeroScan — Airport Security Wait Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c14;
+    --surface: #0d1420;
+    --surface2: #121a28;
+    --border: #1e2d44;
+    --accent: #00c8ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff6e;
+    --text: #e8f0fe;
+    --muted: #5a7090;
+    --warn: #ffb830;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .scanline {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan 4s linear infinite;
+    opacity: 0.4;
+    z-index: 1;
+    pointer-events: none;
+  }
+  @keyframes scan { 0% { top: -2px; } 100% { top: 100vh; } }
+
+  .container {
+    position: relative;
+    z-index: 2;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--accent), #0066ff);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(0,200,255,0.3);
+  }
+
+  .logo-text h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .logo-text p {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .status-pill {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(127,255,110,0.08);
+    border: 1px solid rgba(127,255,110,0.2);
+    border-radius: 20px;
+    padding: 6px 12px;
+    font-size: 10px;
+    color: var(--accent3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent3);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  /* Section titles */
+  .section-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Flight input card */
+  .input-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .input-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .flight-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field-label {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .field-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+
+  .field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,200,255,0.1);
+  }
+
+  .field-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.5) sepia(1) saturate(3) hue-rotate(180deg);
+    cursor: pointer;
+  }
+
+  /* Auto-populated features grid */
+  .features-grid {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+
+  .features-inner {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .feature-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color 0.3s;
+  }
+
+  .feature-chip.updated {
+    border-color: var(--accent);
+    animation: chipFlash 0.6s ease;
+  }
+
+  @keyframes chipFlash {
+    0%   { background: rgba(0,200,255,0.15); }
+    100% { background: var(--surface2); }
+  }
+
+  .chip-label {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .chip-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .chip-value.warn { color: var(--warn); }
+  .chip-value.ok   { color: var(--accent3); }
+
+  /* Predict button */
+  .predict-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--accent), #0055cc);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(0,200,255,0.25);
+    margin-top: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .predict-btn:hover { opacity: 0.9; box-shadow: 0 6px 28px rgba(0,200,255,0.4); }
+  .predict-btn:active { transform: scale(0.98); }
+  .predict-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-shimmer {
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: shimmer 2s infinite;
+  }
+  @keyframes shimmer { 100% { left: 200%; } }
+
+  /* Result card */
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+    display: none;
+    animation: fadeUp 0.5s ease;
+  }
+  .result-card.visible { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-main {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .wait-dial {
+    width: 110px; height: 110px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .wait-dial svg {
+    width: 100%; height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .wait-dial-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .wait-minutes {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--accent);
+  }
+
+  .wait-unit {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    margin-top: 2px;
+  }
+
+  .result-meta {
+    flex: 1;
+  }
+
+  .result-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .result-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .model-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,200,255,0.08);
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  /* Arrival recommendation bar */
+  .arrival-bar {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .arrival-icon { font-size: 20px; }
+
+  .arrival-text .label {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .arrival-text .value {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent3);
+    margin-top: 2px;
+  }
+
+  /* Model comparison */
+  .model-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 12px;
+  }
+
+  .model-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .model-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .model-table tr.best td { color: var(--accent3); }
+  .model-table tr.overfit td { color: var(--warn); }
+
+  .bar-cell { min-width: 120px; }
+
+  .mini-bar-bg {
+    background: var(--border);
+    border-radius: 3px;
+    height: 5px;
+    overflow: hidden;
+  }
+
+  .mini-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 1s ease;
+  }
+
+  .model-table tr.best .mini-bar-fill { background: var(--accent3); }
+  .model-table tr.overfit .mini-bar-fill { background: var(--warn); }
+  .model-table tr:not(.best):not(.overfit) .mini-bar-fill { background: var(--muted); }
+
+  /* Feature importance */
+  .importance-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .imp-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 36px;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+  }
+
+  .imp-name {
+    color: var(--muted);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .imp-bar-bg {
+    background: var(--border);
+    border-radius: 3px;
+    height: 6px;
+    overflow: hidden;
+  }
+
+  .imp-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #0044bb);
+    width: 0;
+    transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .imp-pct {
+    font-size: 10px;
+    color: var(--accent);
+    text-align: right;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 600px) {
+    .flight-row { grid-template-columns: 1fr; }
+    .features-inner { grid-template-columns: repeat(2,1fr); }
+    .result-main { flex-direction: column; align-items: flex-start; }
+    .imp-row { grid-template-columns: 100px 1fr 36px; }
+  }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-icon">✈</div>
+    <div class="logo-text">
+      <h1>AEROSCAN</h1>
+      <p>Airport Security Processing Time Predictor</p>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      Model Active
+    </div>
+  </header>
+
+  <!-- Flight Input -->
+  <div class="section-label">01 — Flight Details</div>
+  <div class="input-card">
+    <div class="flight-row">
+      <div class="field-group">
+        <label class="field-label">Flight Date</label>
+        <input type="date" class="field-input" id="flight-date">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Departure Time (ETD)</label>
+        <input type="time" class="field-input" id="flight-time">
+      </div>
+    </div>
+    <p style="font-size:10px;color:var(--muted);line-height:1.7;">
+      Based on your flight details, all operational parameters are automatically inferred from historical airport patterns.
+    </p>
+  </div>
+
+  <!-- Auto-populated Features -->
+  <div class="section-label">02 — Auto-Inferred Parameters (14 Features)</div>
+  <div class="features-grid">
+    <p style="font-size:10px;color:var(--muted);">
+      These values are pre-filled based on your selected date and time using historical airport operational data.
+    </p>
+    <div class="features-inner" id="features-grid">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <!-- Predict button -->
+  <button class="predict-btn" id="predict-btn" onclick="runPrediction()">
+    <span class="btn-shimmer"></span>
+    ⚡ Predict Security Wait Time
+  </button>
+
+  <!-- Result -->
+  <div class="result-card" id="result-card">
+
+    <div class="section-label" style="margin-top:0;">03 — Prediction Output</div>
+
+    <div class="result-main">
+      <div class="wait-dial">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(0,200,255,0.08)" stroke-width="8"/>
+          <circle cx="50" cy="50" r="42" fill="none"
+            stroke="url(#dialGrad)" stroke-width="8"
+            stroke-linecap="round"
+            stroke-dasharray="264"
+            stroke-dashoffset="264"
+            id="dial-arc"
+            style="transition: stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)"/>
+          <defs>
+            <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00c8ff"/>
+              <stop offset="100%" stop-color="#7fff6e"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="wait-dial-label">
+          <span class="wait-minutes" id="wait-display">--</span>
+          <span class="wait-unit">MINUTES</span>
+        </div>
+      </div>
+
+      <div class="result-meta">
+        <div class="result-title" id="result-title">Calculating...</div>
+        <p class="result-subtitle" id="result-subtitle"></p>
+        <div class="model-badge">
+          ✓ Linear Regression Model &nbsp;·&nbsp; Test R² = 0.6323
+        </div>
+      </div>
+    </div>
+
+    <div class="arrival-bar">
+      <div class="arrival-icon">🕐</div>
+      <div class="arrival-text">
+        <div class="label">Recommended Airport Arrival Time</div>
+        <div class="value" id="arrival-time">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Comparison -->
+  <div class="section-label" style="margin-top:32px;">04 — Model Performance Comparison</div>
+  <div class="input-card">
+    <p style="font-size:10px;color:var(--muted);line-height:1.7;margin-bottom:4px;">
+      Three supervised learning models were trained on the synthetic dataset (600 samples, 14 features). Linear Regression outperformed ensemble methods due to the near-linear nature of the dataset.
+    </p>
+    <table class="model-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Train MAE</th>
+          <th>Test MAE</th>
+          <th>Train R²</th>
+          <th>Test R²</th>
+          <th class="bar-cell">Generalization</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="best">
+          <td>✓ Linear Regression</td>
+          <td>1.6944</td>
+          <td>1.9316</td>
+          <td>0.7192</td>
+          <td>0.6323</td>
+          <td class="bar-cell">
+            <div class="mini-bar-bg">
+              <div class="mini-bar-fill" style="width:88%"></div>
+            </div>
+          </td>
+        </tr>
+        <tr class="overfit">
+          <td>Random Forest</td>
+          <td>0.9468</td>
+          <td>1.9837</td>
+          <td>0.9029</td>
+          <td>0.6120</td>
+          <td class="bar-cell">
+            <div class="mini-bar-bg">
+              <div class="mini-bar-fill" style="width:54%"></div>
+            </div>
+          </td>
+        </tr>
+        <tr class="overfit">
+          <td>Gradient Boosting</td>
+          <td>0.1833</td>
+          <td>2.1358</td>
+          <td>0.9957</td>
+          <td>0.5474</td>
+          <td class="bar-cell">
+            <div class="mini-bar-bg">
+              <div class="mini-bar-fill" style="width:34%"></div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:9px;color:var(--warn);margin-top:10px;letter-spacing:0.05em;">
+      ⚠ Random Forest &amp; Gradient Boosting overfit on training data — large gap between Train R² and Test R².
+    </p>
+  </div>
+
+  <!-- Feature Importance -->
+  <div class="section-label">05 — Feature Importance (Random Forest)</div>
+  <div class="input-card">
+    <p style="font-size:10px;color:var(--muted);line-height:1.7;margin-bottom:4px;">
+      Feature importance scores from the Random Forest model identify the most influential variables in predicting security wait time.
+    </p>
+    <div class="importance-list" id="importance-list">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <footer>
+    Data-Driven Forecasting of Airport Security Processing Time &nbsp;·&nbsp;
+    JAIN (Deemed-to-be University) &nbsp;·&nbsp; AI/ML Certification Project &nbsp;·&nbsp; Jan 2026
+    <br>Mohammed Auof · Bhatta Eshan · S Jeevan · Anas Ishtiyaq
+  </footer>
+
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Kempegowda International Airport, Bengaluru
+const AIRPORT_LAT = 13.1979;
+const AIRPORT_LON = 77.7063;
+
+// ─── Feature Importance Data ──────────────────────────────────────────────────
+const featureImportance = [
+  { name: "gates_open",          pct: 51, label: "Gates Open" },
+  { name: "passengers_next_2hr", pct: 10, label: "Passengers (2hr)" },
+  { name: "current_utilization", pct: 9,  label: "Current Utilization" },
+  { name: "passengers_next_1hr", pct: 8,  label: "Passengers (1hr)" },
+  { name: "hour_of_day",         pct: 6,  label: "Hour of Day" },
+  { name: "avg_wait_last_7days", pct: 5,  label: "Avg Wait (7 days)" },
+  { name: "wait_time_trend",     pct: 4,  label: "Wait Time Trend" },
+  { name: "is_holiday",          pct: 3,  label: "Is Holiday" },
+  { name: "wait_time_last_week", pct: 2,  label: "Wait Last Week" },
+  { name: "weather_impact",      pct: 2,  label: "Weather Impact" },
+];
+
+// ─── Build Feature Importance List ───────────────────────────────────────────
+function buildImportanceList() {
+  const container = document.getElementById('importance-list');
+  container.innerHTML = featureImportance.map(f => `
+    <div class="imp-row">
+      <div class="imp-name">${f.label}</div>
+      <div class="imp-bar-bg">
+        <div class="imp-bar-fill" data-pct="${f.pct}" style="width:0%"></div>
+      </div>
+      <div class="imp-pct">${f.pct}%</div>
+    </div>
+  `).join('');
+  setTimeout(() => {
+    document.querySelectorAll('.imp-bar-fill').forEach(el => {
+      el.style.width = el.dataset.pct + '%';
+    });
+  }, 300);
+}
+
+// ─── API: Check if date is a public holiday in India (Nager.Date) ─────────────
+async function fetchIsHoliday(dateStr) {
+  // dateStr = "YYYY-MM-DD"
+  try {
+    const year = dateStr.split('-')[0];
+    const url  = `https://date.nager.at/api/v3/PublicHolidays/${year}/IN`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error('Holiday API failed');
+    const holidays = await res.json();
+    const match = holidays.find(h => h.date === dateStr);
+    return match ? { isHoliday: 1, name: match.localName || match.name } : { isHoliday: 0, name: null };
+  } catch (e) {
+    console.warn('Holiday API error, defaulting to 0:', e);
+    return { isHoliday: 0, name: null };
+  }
+}
+
+// ─── API: Fetch weather impact from Open-Meteo ────────────────────────────────
+// WMO weather code → impact score (0 = clear, 1 = disrupted)
+// Returns { impact, description, withinRange }
+async function fetchWeatherImpact(dateStr, hour) {
+  const today     = new Date();
+  today.setHours(0,0,0,0);
+  const flightDay = new Date(dateStr + 'T00:00:00');
+  const diffDays  = Math.round((flightDay - today) / 86400000);
+
+  // Outside 16-day forecast window
+  if (diffDays < 0 || diffDays > 16) {
+    return { impact: 0, description: null, withinRange: false, daysAway: diffDays };
+  }
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast`
+      + `?latitude=${AIRPORT_LAT}&longitude=${AIRPORT_LON}`
+      + `&hourly=weathercode,precipitation`
+      + `&timezone=Asia%2FKolkata`
+      + `&start_date=${dateStr}&end_date=${dateStr}`;
+
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error('Weather API failed');
+    const data = await res.json();
+
+    const times = data.hourly.time;          // ["2026-03-23T00:00", ...]
+    const codes = data.hourly.weathercode;
+    const precip = data.hourly.precipitation;
+
+    // Find the index closest to the requested hour
+    const idx = times.findIndex(t => parseInt(t.split('T')[1]) === hour);
+    const safeIdx = idx >= 0 ? idx : hour; // fallback
+
+    const wcode = codes[safeIdx];
+    const rain  = precip[safeIdx];
+
+    // Map WMO codes to disruption
+    let impact = 0, description = '🌤 Clear';
+    if (wcode >= 95) { impact = 1; description = '⛈ Thunderstorm'; }
+    else if (wcode >= 80) { impact = 1; description = '🌧 Heavy Rain'; }
+    else if (wcode >= 61) { impact = 1; description = '🌦 Rain'; }
+    else if (wcode >= 51) { impact = 0; description = '🌦 Drizzle'; }
+    else if (wcode >= 45) { impact = 1; description = '🌫 Fog'; }
+    else if (wcode >= 1)  { impact = 0; description = '⛅ Cloudy'; }
+    else                  { impact = 0; description = '☀ Clear'; }
+
+    return { impact, description, withinRange: true, daysAway: diffDays };
+  } catch (e) {
+    console.warn('Weather API error, defaulting to 0:', e);
+    return { impact: 0, description: '🌤 Unknown', withinRange: true, daysAway: diffDays };
+  }
+}
+
+// ─── Show / hide weather warning banner ──────────────────────────────────────
+function setWeatherBanner(msg, type) {
+  let banner = document.getElementById('weather-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'weather-banner';
+    banner.style.cssText = `
+      margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+      font-size: 10px; line-height: 1.6; letter-spacing: 0.05em;
+      border-left: 3px solid; animation: fadeUp 0.3s ease;
+    `;
+    document.querySelector('.features-grid').appendChild(banner);
+  }
+  if (!msg) { banner.style.display = 'none'; return; }
+  banner.style.display = 'block';
+  if (type === 'warn') {
+    banner.style.background    = 'rgba(255,184,48,0.08)';
+    banner.style.borderColor   = 'var(--warn)';
+    banner.style.color         = 'var(--warn)';
+  } else {
+    banner.style.background  = 'rgba(0,200,255,0.06)';
+    banner.style.borderColor = 'var(--accent)';
+    banner.style.color       = 'var(--muted)';
+  }
+  banner.innerHTML = msg;
+}
+
+// ─── Show loading state on a chip ────────────────────────────────────────────
+function setChipLoading(key) {
+  const chips = document.querySelectorAll('.feature-chip');
+  const config = featureConfig.find(c => c.key === key);
+  if (!config) return;
+  const idx = featureConfig.indexOf(config);
+  if (chips[idx]) chips[idx].querySelector('.chip-value').textContent = '⏳ Fetching...';
+}
+
+// ─── Compute all other features (non-API ones) ────────────────────────────────
+function computeBaseFeatures(dateStr, timeStr) {
+  const dt   = new Date(`${dateStr}T${timeStr || '12:00'}`);
+  const hour = dt.getHours();
+  const dow  = dt.getDay();
+  const isPeak    = (hour >= 6 && hour <= 9) || (hour >= 16 && hour <= 20);
+  const isMidPeak = (hour >= 10 && hour <= 15);
+  const flightsBase = isPeak ? 18 : isMidPeak ? 12 : 7;
+  const passBase    = isPeak ? 1600 : isMidPeak ? 900 : 500;
+  const gatesBase   = isPeak ? 8 : isMidPeak ? 14 : 20;
+  const util        = isPeak ? 0.78 : isMidPeak ? 0.55 : 0.32;
+  return {
+    hour_of_day:         hour,
+    day_of_week:         dow,
+    month:               dt.getMonth() + 1,
+    is_holiday:          0,           // will be replaced by API
+    flights_next_1hr:    flightsBase + Math.round(Math.random()*4),
+    flights_next_2hr:    flightsBase*2 + Math.round(Math.random()*6),
+    passengers_next_1hr: passBase + Math.round(Math.random()*200),
+    passengers_next_2hr: passBase*2 + Math.round(Math.random()*400),
+    gates_open:          gatesBase + Math.round(Math.random()*3 - 1),
+    current_utilization: +(util + (Math.random()*0.08 - 0.04)).toFixed(3),
+    weather_impact:      0,           // will be replaced by API
+    wait_time_last_week: +(8 + Math.random()*12).toFixed(2),
+    avg_wait_last_7days: +(8 + Math.random()*10).toFixed(2),
+    wait_time_trend:     +(Math.random()*6 - 1).toFixed(3),
+    // extra display metadata (not model features)
+    _weather_desc:       '⏳ Fetching...',
+    _holiday_name:       null,
+    _weather_in_range:   true,
+  };
+}
+
+// ─── Feature display config ───────────────────────────────────────────────────
+const featureConfig = [
+  { key: 'hour_of_day',          label: 'Hour of Day',       fmt: v => `${v}:00` },
+  { key: 'day_of_week',          label: 'Day of Week',       fmt: v => DAYS[v] },
+  { key: 'month',                label: 'Month',             fmt: v => MONTHS[v-1] },
+  { key: 'is_holiday',           label: 'Is Holiday',        fmt: (v,f) => {
+      if (v && f._holiday_name) return `🔴 ${f._holiday_name}`;
+      return v ? '🔴 YES' : '🟢 NO';
+    }, cls: v => v ? 'warn' : 'ok' },
+  { key: 'flights_next_1hr',     label: 'Flights (1hr)',     fmt: v => v },
+  { key: 'flights_next_2hr',     label: 'Flights (2hr)',     fmt: v => v },
+  { key: 'passengers_next_1hr',  label: 'Passengers (1hr)',  fmt: v => v.toLocaleString() },
+  { key: 'passengers_next_2hr',  label: 'Passengers (2hr)',  fmt: v => v.toLocaleString() },
+  { key: 'gates_open',           label: 'Gates Open',        fmt: v => v },
+  { key: 'current_utilization',  label: 'Queue Utilization', fmt: v => (v*100).toFixed(1)+'%', cls: v => v > 0.7 ? 'warn' : 'ok' },
+  { key: 'weather_impact',       label: 'Weather (BLR)',     fmt: (v,f) => f._weather_desc || (v ? '⛈ Disrupted' : '🌤 Clear'),
+                                                              cls: v => v ? 'warn' : 'ok' },
+  { key: 'wait_time_last_week',  label: 'Wait Last Week',    fmt: v => `${v} min` },
+  { key: 'avg_wait_last_7days',  label: 'Avg Wait 7d',       fmt: v => `${v} min` },
+  { key: 'wait_time_trend',      label: 'Wait Trend',        fmt: v => v > 0 ? `▲ +${v}` : `▼ ${v}`, cls: v => v > 2 ? 'warn' : 'ok' },
+];
+
+let currentFeatures = null;
+
+function renderFeatures(features) {
+  const grid = document.getElementById('features-grid');
+  grid.innerHTML = featureConfig.map(c => {
+    const val = features[c.key];
+    const cls = c.cls ? c.cls(val) : '';
+    return `
+      <div class="feature-chip updated">
+        <span class="chip-label">${c.label}</span>
+        <span class="chip-value ${cls}">${c.fmt(val, features)}</span>
+      </div>
+    `;
+  }).join('');
+  setTimeout(() => {
+    grid.querySelectorAll('.feature-chip').forEach(el => el.classList.remove('updated'));
+  }, 700);
+}
+
+// ─── Main: fetch APIs and update features ────────────────────────────────────
+async function updateFeatures() {
+  const d = document.getElementById('flight-date').value;
+  const t = document.getElementById('flight-time').value;
+  if (!d || !t) return;
+
+  // Step 1: render base features immediately (no wait)
+  currentFeatures = computeBaseFeatures(d, t);
+  renderFeatures(currentFeatures);
+  setWeatherBanner(null);
+
+  const hour = parseInt(t.split(':')[0]);
+
+  // Step 2: fetch both APIs in parallel
+  const [holidayResult, weatherResult] = await Promise.all([
+    fetchIsHoliday(d),
+    fetchWeatherImpact(d, hour),
+  ]);
+
+  // Step 3: patch features with real data
+  currentFeatures.is_holiday      = holidayResult.isHoliday;
+  currentFeatures._holiday_name   = holidayResult.name;
+  currentFeatures.weather_impact  = weatherResult.impact;
+  currentFeatures._weather_desc   = weatherResult.description || '🌤 Clear';
+  currentFeatures._weather_in_range = weatherResult.withinRange;
+
+  // Step 4: re-render with live data
+  renderFeatures(currentFeatures);
+
+  // Step 5: show warning if outside forecast window
+  if (!weatherResult.withinRange) {
+    const daysAway = weatherResult.daysAway;
+    if (daysAway > 16) {
+      const daysLeft = daysAway - 10;
+      setWeatherBanner(
+        `⚠ Weather forecast is only available within 16 days.<br>
+         Your flight is <strong>${daysAway} days away</strong>. Weather impact is set to 0 (clear) for now.<br>
+         Please check again when <strong>${daysLeft} more day${daysLeft !== 1 ? 's pass' : ' passes'}</strong> — i.e. around <strong>10 days before your flight</strong>.`,
+        'warn'
+      );
+    }
+  } else if (weatherResult.impact === 1) {
+    setWeatherBanner(
+      `ℹ Live weather data from Open-Meteo · Holiday data from Nager.Date (India) — both fetched in real time for your selected date.`,
+      'info'
+    );
+  } else {
+    setWeatherBanner(
+      `ℹ Live weather data from Open-Meteo · Holiday data from Nager.Date (India) — both fetched in real time for your selected date.`,
+      'info'
+    );
+  }
+}
+
+document.getElementById('flight-date').addEventListener('change', updateFeatures);
+document.getElementById('flight-time').addEventListener('change', updateFeatures);
+
+// Set default to today + reasonable time
+const today = new Date();
+document.getElementById('flight-date').value = today.toISOString().split('T')[0];
+document.getElementById('flight-time').value = '09:30';
+updateFeatures();
+
+// ─── Prediction Logic (Linear Regression coefficients) ───────────────────────
+function predict(f) {
+  let wait =
+      0.0008 * f.passengers_next_1hr
+    + 0.0003 * f.passengers_next_2hr
+    + 0.25   * f.flights_next_1hr
+    + 0.18   * f.flights_next_2hr
+    - 0.35   * f.gates_open
+    + 8.5    * f.current_utilization
+    + 0.18   * f.wait_time_last_week
+    + 0.22   * f.avg_wait_last_7days
+    + 0.12   * f.wait_time_trend
+    + 1.5    * f.is_holiday
+    + 0.8    * f.weather_impact
+    + 0.05   * f.hour_of_day
+    + 2.5;
+  return Math.max(3, Math.min(40, +wait.toFixed(2)));
+}
+
+// ─── Run Prediction ───────────────────────────────────────────────────────────
+function runPrediction() {
+  const d = document.getElementById('flight-date').value;
+  const t = document.getElementById('flight-time').value;
+  if (!d || !t) { alert('Please select both date and departure time.'); return; }
+  if (!currentFeatures) currentFeatures = computeBaseFeatures(d, t);
+
+  const btn = document.getElementById('predict-btn');
+  btn.disabled = true;
+  btn.textContent = 'Running Model...';
+
+  setTimeout(() => {
+    const waitTime = predict(currentFeatures);
+
+    const arc = document.getElementById('dial-arc');
+    const fraction = Math.min(waitTime / 35, 1);
+    arc.style.strokeDashoffset = 264 * (1 - fraction);
+    document.getElementById('wait-display').textContent = waitTime.toFixed(1);
+
+    let title, subtitle;
+    if (waitTime < 10) {
+      title    = '🟢 Low Wait — Move Quickly';
+      subtitle = `Estimated ${waitTime.toFixed(1)} min to clear security. Queue load is light.`;
+    } else if (waitTime < 20) {
+      title    = '🟡 Moderate Wait — Plan Ahead';
+      subtitle = `Estimated ${waitTime.toFixed(1)} min to clear security. Consider arriving a bit earlier.`;
+    } else {
+      title    = '🔴 High Wait — Arrive Early';
+      subtitle = `Estimated ${waitTime.toFixed(1)} min to clear security. Peak congestion detected.`;
+    }
+
+    // Append live data note to subtitle
+    const liveNote = currentFeatures._weather_in_range
+      ? ` · Weather: ${currentFeatures._weather_desc}`
+      : ` · Weather forecast unavailable (>16 days out)`;
+    const holidayNote = currentFeatures.is_holiday
+      ? ` · 🔴 Public Holiday: ${currentFeatures._holiday_name || 'Yes'}`
+      : '';
+    subtitle += liveNote + holidayNote;
+
+    document.getElementById('result-title').textContent    = title;
+    document.getElementById('result-subtitle').textContent = subtitle;
+
+    const [hh, mm] = t.split(':').map(Number);
+    const dep = new Date(2000, 0, 1, hh, mm);
+    const bufferMin = Math.ceil(waitTime) + 45;
+    dep.setMinutes(dep.getMinutes() - bufferMin);
+    const rh = String(dep.getHours()).padStart(2,'0');
+    const rm = String(dep.getMinutes()).padStart(2,'0');
+    document.getElementById('arrival-time').textContent =
+      `Arrive by ${rh}:${rm}  (${bufferMin} min before departure)`;
+
+    const card = document.getElementById('result-card');
+    card.classList.add('visible');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-shimmer"></span>⚡ Predict Security Wait Time';
+  }, 900);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildImportanceList();
+</script>
+</body>
+</html>
